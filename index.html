@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tire Shop — Stock Admin</title>
+<style>
+  :root { --ink:#1a1d21; --muted:#5b6470; --line:#d8dde3; --bg:#f4f5f6; --card:#ffffff; --accent:#14532d; --accent-ink:#ffffff; --danger:#b3261e; --focus:#14532d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--ink); font-size:15px; line-height:1.45; }
+  .wrap { max-width:960px; margin:0 auto; padding:20px 16px 48px; }
+  header { margin-bottom:16px; }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-0.01em; }
+  .sub { color:var(--muted); margin:0; max-width:68ch; }
+  .notice { background:#fff8e1; border:1px solid #e8d48a; border-radius:8px; padding:10px 12px; margin:14px 0; color:#5d4a00; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:16px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .toolbar input[type="text"], .toolbar select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); }
+  .toolbar input[type="text"] { flex:1 1 200px; min-width:160px; }
+  button { font:inherit; cursor:pointer; border-radius:8px; padding:8px 14px; border:1px solid var(--line); background:#fff; color:var(--ink); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  button.danger { color:var(--danger); border-color:#e5b6b3; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+  .tablewrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; min-width:720px; }
+  th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); padding:8px; border-bottom:2px solid var(--line); white-space:nowrap; }
+  td { padding:6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  td input, td select { font:inherit; width:100%; padding:6px 8px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--ink); }
+  td input:hover, td select:hover { border-color:var(--line); }
+  td input:focus, td select:focus { border-color:var(--focus); outline:none; background:#fff; }
+  td.num input { text-align:right; }
+  .low { color:var(--danger); font-weight:600; }
+  .summary { display:flex; flex-wrap:wrap; gap:24px; }
+  .summary div { min-width:110px; }
+  .summary .n { font-size:22px; font-weight:700; }
+  .summary .l { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; }
+  .lookup-result { margin-top:10px; }
+  .lookup-result ul { margin:8px 0 0; padding-left:20px; }
+  .empty { color:var(--muted); padding:18px 8px; text-align:center; }
+  footer { color:var(--muted); font-size:13px; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Tire Shop — Stock Admin</h1>
+    <p class="sub">Spreadsheet for one shop. Edit any cell, add rows, delete rows. Size lookup below previews what the bot will answer customers.</p>
+  </header>
+
+  <div class="notice">Prototype: demo stock lives in this page only and resets on reload. Saving to the shop backend comes with the inventory store from the endpoint sketch.</div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="text" id="q" placeholder="Filter by size, brand or model — e.g. 205/55 R16" aria-label="Filter stock">
+      <select id="season" aria-label="Filter by season">
+        <option value="">All seasons</option>
+        <option value="summer">Summer</option>
+        <option value="winter">Winter</option>
+        <option value="all-season">All-season</option>
+      </select>
+      <button class="primary" id="addRow">Add row</button>
+    </div>
+  </div>
+
+  <div class="card tablewrap">
+    <table aria-label="Stock spreadsheet">
+      <thead>
+        <tr><th>Size</th><th>Brand</th><th>Model</th><th>Season</th><th>Use</th><th style="text-align:right">Price</th><th style="text-align:right">Qty</th><th></th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>No rows match this filter.</div>
+  </div>
+
+  <div class="card summary" id="summary"></div>
+
+  <div class="card">
+    <h2 style="font-size:16px;margin:0 0 4px">Test customer lookup</h2>
+    <p class="sub" style="margin:0 0 10px">Type a tire size the way a customer would. Only in-stock rows are shown, cheapest first.</p>
+    <div class="toolbar">
+      <input type="text" id="lookup" placeholder="e.g. 205/55 R16" aria-label="Customer size lookup">
+      <button id="lookupBtn">Look up</button>
+    </div>
+    <div class="lookup-result" id="lookupResult"></div>
+  </div>
+
+  <footer>Prototype v0.1.0 — front end only. Next: inventory store + Stock API with shop-owner auth.</footer>
+</div>
+
+<script>
+var SEASONS = ["summer", "winter", "all-season"];
+var USES = ["commuting", "highway", "off-road", "performance", "load"];
+var rows = [
+  { size:"205/55 R16", brand:"Michelin", model:"Primacy 4", season:"summer", use:"commuting", price:89, qty:12 },
+  { size:"205/55 R16", brand:"Nokian", model:"Hakkapeliitta R5", season:"winter", use:"commuting", price:104, qty:15 },
+  { size:"225/45 R17", brand:"Continental", model:"PremiumContact 6", season:"summer", use:"performance", price:112, qty:8 },
+  { size:"195/65 R15", brand:"Bridgestone", model:"Turanza T005", season:"summer", use:"highway", price:76, qty:20 },
+  { size:"265/65 R17", brand:"BFGoodrich", model:"All-Terrain T/A KO2", season:"all-season", use:"off-road", price:189, qty:6 },
+  { size:"235/60 R18", brand:"Pirelli", model:"Scorpion Verde", season:"all-season", use:"highway", price:132, qty:4 }
+];
+
+var tbody = document.getElementById("rows");
+var emptyEl = document.getElementById("empty");
+var summaryEl = document.getElementById("summary");
+
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function normSize(s){ return String(s||"").replace(/\s+/g,"").toUpperCase(); }
+function money(cents){ return "$" + (cents).toFixed(0); }
+
+function optionList(list, current){
+  return list.map(function(v){ return '<option value="'+v+'"'+(v===current?' selected':'')+'>'+v+'</option>'; }).join("");
+}
+
+function render(){
+  var q = document.getElementById("q").value.trim().toLowerCase();
+  var season = document.getElementById("season").value;
+  var shown = 0;
+  tbody.innerHTML = rows.map(function(r, i){
+    var hay = (r.size+" "+r.brand+" "+r.model).toLowerCase();
+    if (q && hay.indexOf(q) === -1) return "";
+    if (season && r.season !== season) return "";
+    shown++;
+    return '<tr data-i="'+i+'">'
+      + '<td><input value="'+esc(r.size)+'" data-f="size" aria-label="Size"></td>'
+      + '<td><input value="'+esc(r.brand)+'" data-f="brand" aria-label="Brand"></td>'
+      + '<td><input value="'+esc(r.model)+'" data-f="model" aria-label="Model"></td>'
+      + '<td><select data-f="season" aria-label="Season">'+optionList(SEASONS, r.season)+'</select></td>'
+      + '<td><select data-f="use" aria-label="Use">'+optionList(USES, r.use)+'</select></td>'
+      + '<td class="num"><input value="'+r.price+'" data-f="price" inputmode="decimal" aria-label="Price"></td>'
+      + '<td class="num"><input value="'+r.qty+'" data-f="qty" inputmode="numeric" aria-label="Quantity" class="'+(r.qty<=5?'low':'')+'"></td>'
+      + '<td><button class="danger" data-del="'+i+'">Delete</button></td>'
+      + '</tr>';
+  }).join("");
+  emptyEl.hidden = shown > 0;
+  var units = rows.reduce(function(a,r){ return a + (+r.qty||0); }, 0);
+  var value = rows.reduce(function(a,r){ return a + (+r.price||0)*(+r.qty||0); }, 0);
+  summaryEl.innerHTML =
+    '<div><div class="n">'+rows.length+'</div><div class="l">Tyre lines</div></div>'
+    + '<div><div class="n">'+units+'</div><div class="l">Units in stock</div></div>'
+    + '<div><div class="n">'+money(value)+'</div><div class="l">Stock value</div></div>';
+}
+
+tbody.addEventListener("input", function(e){
+  var tr = e.target.closest("tr");
+  if (!tr) return;
+  var r = rows[+tr.dataset.i];
+  var f = e.target.dataset.f;
+  var v = e.target.value;
+  if (f === "price" || f === "qty") { v = Math.max(0, Math.round(parseFloat(v) || 0)); }
+  r[f] = v;
+  if (f === "qty") render();
+});
+
+tbody.addEventListener("click", function(e){
+  var btn = e.target.closest("[data-del]");
+  if (!btn) return;
+  rows.splice(+btn.dataset.del, 1);
+  render();
+});
+
+document.getElementById("addRow").addEventListener("click", function(){
+  rows.push({ size:"", brand:"", model:"", season:"summer", use:"commuting", price:0, qty:0 });
+  render();
+  var inputs = tbody.querySelectorAll("tr:last-child input");
+  if (inputs[0]) inputs[0].focus();
+});
+
+document.getElementById("q").addEventListener("input", render);
+document.getElementById("season").addEventListener("change", render);
+
+function doLookup(){
+  var want = normSize(document.getElementById("lookup").value);
+  var out = document.getElementById("lookupResult");
+  if (!want) { out.innerHTML = "<p class='sub'>Enter a size first.</p>"; return; }
+  var hits = rows.filter(function(r){ return normSize(r.size) === want && (+r.qty||0) > 0; })
+    .sort(function(a,b){ return a.price - b.price; });
+  if (!hits.length) {
+    out.innerHTML = "<p>No in-stock tyres in " + esc(document.getElementById("lookup").value) + ". Closest sizes in stock: "
+      + esc(rows.filter(function(r){ return (+r.qty||0) > 0; }).map(function(r){ return r.size; }).filter(function(v,i,a){ return a.indexOf(v)===i; }).join(", ") || "none") + ".</p>";
+    return;
+  }
+  out.innerHTML = "<p><strong>" + hits.length + " in stock in " + esc(document.getElementById("lookup").value) + ":</strong></p><ul>"
+    + hits.map(function(r){ return "<li>" + esc(r.brand) + " " + esc(r.model) + " — " + esc(r.season) + ", " + esc(r.use) + " — " + money(r.price) + " (" + r.qty + " left)</li>"; }).join("")
+    + "</ul>";
+}
+document.getElementById("lookupBtn").addEventListener("click", doLookup);
+document.getElementById("lookup").addEventListener("keydown", function(e){ if (e.key === "Enter") doLookup(); });
+
+render();
+</script>
+</body>
+</html>
