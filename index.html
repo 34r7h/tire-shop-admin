@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tire Shop — Stock Admin</title>
+<script src="/auth.js"></script>
 <style>
   :root { --ink:#1a1d21; --muted:#5b6470; --line:#d8dde3; --bg:#f4f5f6; --card:#ffffff; --accent:#14532d; --accent-ink:#ffffff; --danger:#b3261e; --focus:#14532d; }
   * { box-sizing:border-box; }
@@ -12,15 +13,21 @@
   header { margin-bottom:16px; }
   h1 { font-size:22px; margin:0 0 4px; letter-spacing:-0.01em; }
   .sub { color:var(--muted); margin:0; max-width:68ch; }
-  .notice { background:#fff8e1; border:1px solid #e8d48a; border-radius:8px; padding:10px 12px; margin:14px 0; color:#5d4a00; }
+  .status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; background:#e9f2ea; border:1px solid #bcd8bf; border-radius:8px; padding:10px 12px; margin:14px 0; }
+  .status .who { font-weight:600; }
+  .status .note { color:var(--muted); font-size:13px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:16px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tabs button { padding:8px 16px; }
+  .tabs button.active { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-  .toolbar input[type="text"], .toolbar select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); }
+  .toolbar input[type="text"], .toolbar select, .toolbar input[type="number"] { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); }
   .toolbar input[type="text"] { flex:1 1 200px; min-width:160px; }
   button { font:inherit; cursor:pointer; border-radius:8px; padding:8px 14px; border:1px solid var(--line); background:#fff; color:var(--ink); }
   button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   button.danger { color:var(--danger); border-color:#e5b6b3; }
-  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+  button:disabled { opacity:.55; cursor:default; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
   .tablewrap { overflow-x:auto; }
   table { width:100%; border-collapse:collapse; min-width:720px; }
   th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); padding:8px; border-bottom:2px solid var(--line); white-space:nowrap; }
@@ -36,157 +43,517 @@
   .summary .l { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; }
   .lookup-result { margin-top:10px; }
   .lookup-result ul { margin:8px 0 0; padding-left:20px; }
+  .lookup-msg { white-space:pre-wrap; margin:10px 0 0; }
   .empty { color:var(--muted); padding:18px 8px; text-align:center; }
+  .savenote { font-size:13px; color:var(--muted); min-height:18px; margin-top:8px; }
+  .savenote.err { color:var(--danger); }
+  .savenote.ok { color:var(--accent); }
+  label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
+  textarea, input[type="text"].full, input[type="number"].full { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font:inherit; background:#fff; color:var(--ink); }
+  textarea { min-height:64px; resize:vertical; }
+  .qrow { border-bottom:1px solid var(--line); padding:10px 0; }
+  .qrow:last-child { border-bottom:0; }
+  .qrow .q { font-weight:600; }
+  .qrow .meta { color:var(--muted); font-size:13px; }
   footer { color:var(--muted); font-size:13px; margin-top:8px; }
+  .hidden { display:none !important; }
+  /* Handoff's own sign-in panel (/auth.js) ships no layout of its own — it
+     expects the host page's styles. This bundle is standalone, so the panel's
+     overlay layout lives here; without it the panel renders as an unstyled
+     block below the page content instead of a modal. */
+  .hf-modal { position: fixed; inset: 0; z-index: 1000; overflow-y: auto; background: rgba(24,21,17,.55); padding: 24px 12px; font-family: system-ui, sans-serif; }
+  .hf-modal .hf-box { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 12px; max-width: 420px; margin: 40px auto; padding: 20px; }
+  .hf-modal .hf-x { position: absolute; top: 10px; right: 10px; padding: 6px 10px; }
+  .hf-modal .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .hf-modal .tab.active { background: #e8a100; border-color: #c78a00; font-weight: 600; }
+  .hf-modal input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 16px; font-family: system-ui, sans-serif; background: #fff; color: var(--ink); }
+  .hf-modal input.otp { width: auto; }
+  .hf-modal .muted { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+  .hf-modal .err { color: var(--danger); font-size: 13.5px; }
+  .hf-modal .ok { color: #0b4d2a; font-size: 13.5px; }
+  .hf-modal summary { cursor: pointer; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Tire Shop — Stock Admin</h1>
-    <p class="sub">Spreadsheet for one shop. Edit any cell, add rows, delete rows. Size lookup below previews what the bot will answer customers.</p>
+    <p class="sub">Spreadsheet for one shop. Edit any cell, add rows, delete rows. The Telegram bot answers customers from these same rows.</p>
   </header>
 
-  <div class="notice">Prototype: demo stock lives in this page only and resets on reload. Saving to the shop backend comes with the inventory store from the endpoint sketch.</div>
+  <div class="status" id="statusBox">
+    <span id="statusText" class="note">Connecting…</span>
+    <span>
+      <button id="signInBtn" class="primary" type="button">Sign in with handoff</button>
+      <button id="signOutBtn" type="button" class="hidden">Sign out</button>
+    </span>
+  </div>
 
-  <div class="card">
-    <div class="toolbar">
-      <input type="text" id="q" placeholder="Filter by size, brand or model — e.g. 205/55 R16" aria-label="Filter stock">
-      <select id="season" aria-label="Filter by season">
-        <option value="">All seasons</option>
-        <option value="summer">Summer</option>
-        <option value="winter">Winter</option>
-        <option value="all-season">All-season</option>
-      </select>
-      <button class="primary" id="addRow">Add row</button>
+  <div class="card hidden" id="signedOutCard">
+    <p style="margin:0">Sign in with handoff to load your shop's stock. Your rows save to the shop backend and the Telegram bot reads them live.</p>
+  </div>
+
+  <div id="appBody" class="hidden">
+    <div class="tabs" role="tablist">
+      <button id="tabStock" class="active" type="button">Stock</button>
+      <button id="tabSettings" type="button">Bot settings</button>
+      <button id="tabUnanswered" type="button">Unanswered questions</button>
+    </div>
+
+    <div id="panelStock">
+      <div class="card">
+        <div class="toolbar">
+          <input type="text" id="q" placeholder="Filter by size, brand or model — e.g. 205/55 R16" aria-label="Filter stock">
+          <select id="season" aria-label="Filter by season">
+            <option value="">All seasons</option>
+            <option value="summer">Summer</option>
+            <option value="winter">Winter</option>
+            <option value="all-season">All-season</option>
+          </select>
+          <button class="primary" id="addRow" type="button">Add row</button>
+          <button id="loadDemo" type="button" class="hidden">Load demo stock</button>
+        </div>
+        <div class="savenote" id="saveNote"></div>
+      </div>
+
+      <div class="card tablewrap">
+        <table aria-label="Stock spreadsheet">
+          <thead>
+            <tr><th>Size</th><th>Brand</th><th>Model</th><th>Season</th><th>Use</th><th style="text-align:right">Price</th><th style="text-align:right">Qty</th><th></th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="empty" id="empty" hidden>No rows match this filter.</div>
+      </div>
+
+      <div class="card summary" id="summary"></div>
+
+      <div class="card">
+        <h2 style="font-size:16px;margin:0 0 4px">Test customer lookup</h2>
+        <p class="sub" style="margin:0 0 10px">Type a tire size the way a customer would. This calls the same lookup the Telegram bot uses.</p>
+        <div class="toolbar">
+          <input type="text" id="lookup" placeholder="e.g. 205/55 R16 winter for highway" aria-label="Customer size lookup">
+          <button id="lookupBtn" type="button">Look up</button>
+        </div>
+        <div class="lookup-result" id="lookupResult"></div>
+      </div>
+    </div>
+
+    <div id="panelSettings" class="hidden">
+      <div class="card">
+        <h2 style="font-size:16px;margin:0">Bot settings</h2>
+        <p class="sub" style="margin:4px 0 0">What the Telegram bot says to customers.</p>
+        <label for="greeting">Greeting (sent when a customer first says /start)</label>
+        <textarea id="greeting"></textarea>
+        <label for="contactText">Contact line (added when a size is out of stock)</label>
+        <textarea id="contactText"></textarea>
+        <label for="maxPicks">How many tyres to suggest at most</label>
+        <input type="number" id="maxPicks" class="full" min="1" max="5" step="1" style="max-width:120px">
+        <div class="toolbar" style="margin-top:14px">
+          <button id="saveSettings" class="primary" type="button">Save settings</button>
+        </div>
+        <div class="savenote" id="settingsNote"></div>
+        <p class="sub" style="margin-top:14px">Bot connection is set up by amuse, not here: send your BotFather token to amuse and the bot gets registered and pointed at your shop. The token never goes into this page.</p>
+      </div>
+    </div>
+
+    <div id="panelUnanswered" class="hidden">
+      <div class="card">
+        <h2 style="font-size:16px;margin:0 0 4px">Unanswered questions</h2>
+        <p class="sub" style="margin:0 0 10px">Customer messages the bot could not answer — a size it did not catch, or a size with nothing in stock.</p>
+        <div class="toolbar" style="margin-bottom:8px">
+          <button id="refreshUnanswered" type="button">Refresh</button>
+          <button id="clearUnanswered" class="danger" type="button">Clear all</button>
+        </div>
+        <div id="unansweredList"></div>
+      </div>
     </div>
   </div>
 
-  <div class="card tablewrap">
-    <table aria-label="Stock spreadsheet">
-      <thead>
-        <tr><th>Size</th><th>Brand</th><th>Model</th><th>Season</th><th>Use</th><th style="text-align:right">Price</th><th style="text-align:right">Qty</th><th></th></tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div class="empty" id="empty" hidden>No rows match this filter.</div>
-  </div>
-
-  <div class="card summary" id="summary"></div>
-
-  <div class="card">
-    <h2 style="font-size:16px;margin:0 0 4px">Test customer lookup</h2>
-    <p class="sub" style="margin:0 0 10px">Type a tire size the way a customer would. Only in-stock rows are shown, cheapest first.</p>
-    <div class="toolbar">
-      <input type="text" id="lookup" placeholder="e.g. 205/55 R16" aria-label="Customer size lookup">
-      <button id="lookupBtn">Look up</button>
-    </div>
-    <div class="lookup-result" id="lookupResult"></div>
-  </div>
-
-  <footer>Prototype v0.1.0 — front end only. Next: inventory store + Stock API with shop-owner auth.</footer>
+  <footer>Tire Shop v0.2.0 — live stock, bot settings, unanswered questions. Rows save to your shop; the Telegram bot answers from the same rows.</footer>
 </div>
 
 <script>
+(function () {
 var SEASONS = ["summer", "winter", "all-season"];
 var USES = ["commuting", "highway", "off-road", "performance", "load"];
-var rows = [
-  { size:"205/55 R16", brand:"Michelin", model:"Primacy 4", season:"summer", use:"commuting", price:89, qty:12 },
-  { size:"205/55 R16", brand:"Nokian", model:"Hakkapeliitta R5", season:"winter", use:"commuting", price:104, qty:15 },
-  { size:"225/45 R17", brand:"Continental", model:"PremiumContact 6", season:"summer", use:"performance", price:112, qty:8 },
-  { size:"195/65 R15", brand:"Bridgestone", model:"Turanza T005", season:"summer", use:"highway", price:76, qty:20 },
-  { size:"265/65 R17", brand:"BFGoodrich", model:"All-Terrain T/A KO2", season:"all-season", use:"off-road", price:189, qty:6 },
-  { size:"235/60 R18", brand:"Pirelli", model:"Scorpion Verde", season:"all-season", use:"highway", price:132, qty:4 }
+var DEMO_ROWS = [
+  { size:"205/55 R16", brand:"Michelin", model:"Primacy 4", season:"summer", use_type:"commuting", price:89, qty:12 },
+  { size:"205/55 R16", brand:"Nokian", model:"Hakkapeliitta R5", season:"winter", use_type:"commuting", price:104, qty:15 },
+  { size:"225/45 R17", brand:"Continental", model:"PremiumContact 6", season:"summer", use_type:"performance", price:112, qty:8 },
+  { size:"195/65 R15", brand:"Bridgestone", model:"Turanza T005", season:"summer", use_type:"highway", price:76, qty:20 },
+  { size:"265/65 R17", brand:"BFGoodrich", model:"All-Terrain T/A KO2", season:"all-season", use_type:"off-road", price:189, qty:6 },
+  { size:"235/60 R18", brand:"Pirelli", model:"Scorpion Verde", season:"all-season", use_type:"highway", price:132, qty:4 }
 ];
+var SID = null, USERNAME = null, SHOP_NAME = null;
+var rows = [];
+var saveTimers = {};
+var tmpSeq = 0;
 
-var tbody = document.getElementById("rows");
-var emptyEl = document.getElementById("empty");
-var summaryEl = document.getElementById("summary");
-
+function $(id) { return document.getElementById(id); }
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function normSize(s){ return String(s||"").replace(/\s+/g,"").toUpperCase(); }
-function money(cents){ return "$" + (cents).toFixed(0); }
+function money(cents){ var d = (cents || 0) / 100; return "$" + (Number.isInteger(d) ? d : d.toFixed(2)); }
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+async function callU(action, data) {
+  var lastErr = null;
+  for (var attempt = 0; attempt < 3; attempt++) {
+    try {
+      var r = await fetch("https://tunnel.handoff.lol/t/amuse/u", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ app: "tire-shop", from: "visitor", to: "server", action: action, data: data || {} })
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await sleep(1000 * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+function withSid(d) { d = d || {}; if (SID) d.sid = SID; return d; }
 
-function optionList(list, current){
-  return list.map(function(v){ return '<option value="'+v+'"'+(v===current?' selected':'')+'>'+v+'</option>'; }).join("");
+function setNote(text, kind) {
+  var n = $("saveNote");
+  n.textContent = text || "";
+  n.className = "savenote" + (kind ? " " + kind : "");
+}
+function setSettingsNote(text, kind) {
+  var n = $("settingsNote");
+  n.textContent = text || "";
+  n.className = "savenote" + (kind ? " " + kind : "");
 }
 
-function render(){
-  var q = document.getElementById("q").value.trim().toLowerCase();
-  var season = document.getElementById("season").value;
+function updateAuthUI() {
+  if (SID && USERNAME) {
+    $("statusText").innerHTML = "Connected · Signed in as <span class=\"who\">@" + esc(USERNAME) + "</span>" + (SHOP_NAME ? " · Shop: " + esc(SHOP_NAME) : "");
+    $("signInBtn").classList.add("hidden");
+    $("signOutBtn").classList.remove("hidden");
+    $("signedOutCard").classList.add("hidden");
+    $("appBody").classList.remove("hidden");
+  } else {
+    $("statusText").textContent = "Not signed in yet — sign in with handoff to edit your stock.";
+    $("signInBtn").classList.remove("hidden");
+    $("signOutBtn").classList.add("hidden");
+    $("signedOutCard").classList.remove("hidden");
+    $("appBody").classList.add("hidden");
+  }
+  $("loadDemo").classList.toggle("hidden", !(SID && rows.length === 0));
+}
+
+function optionList(list, current) {
+  return list.map(function (v) { return '<option value="' + v + '"' + (v === current ? " selected" : "") + ">" + v + "</option>"; }).join("");
+}
+
+function render() {
+  var q = $("q").value.trim().toLowerCase();
+  var season = $("season").value;
   var shown = 0;
-  tbody.innerHTML = rows.map(function(r, i){
-    var hay = (r.size+" "+r.brand+" "+r.model).toLowerCase();
+  var tbody = $("rows");
+  tbody.innerHTML = rows.map(function (r, i) {
+    var hay = (r.size + " " + r.brand + " " + r.model).toLowerCase();
     if (q && hay.indexOf(q) === -1) return "";
     if (season && r.season !== season) return "";
     shown++;
-    return '<tr data-i="'+i+'">'
-      + '<td><input value="'+esc(r.size)+'" data-f="size" aria-label="Size"></td>'
-      + '<td><input value="'+esc(r.brand)+'" data-f="brand" aria-label="Brand"></td>'
-      + '<td><input value="'+esc(r.model)+'" data-f="model" aria-label="Model"></td>'
-      + '<td><select data-f="season" aria-label="Season">'+optionList(SEASONS, r.season)+'</select></td>'
-      + '<td><select data-f="use" aria-label="Use">'+optionList(USES, r.use)+'</select></td>'
-      + '<td class="num"><input value="'+r.price+'" data-f="price" inputmode="decimal" aria-label="Price"></td>'
-      + '<td class="num"><input value="'+r.qty+'" data-f="qty" inputmode="numeric" aria-label="Quantity" class="'+(r.qty<=5?'low':'')+'"></td>'
-      + '<td><button class="danger" data-del="'+i+'">Delete</button></td>'
-      + '</tr>';
+    return "<tr data-i=\"" + i + "\" data-rid=\"" + esc(r.row_id || r._tmp || "") + "\">"
+      + "<td><input value=\"" + esc(r.size) + "\" data-f=\"size\" aria-label=\"Size\"></td>"
+      + "<td><input value=\"" + esc(r.brand) + "\" data-f=\"brand\" aria-label=\"Brand\"></td>"
+      + "<td><input value=\"" + esc(r.model) + "\" data-f=\"model\" aria-label=\"Model\"></td>"
+      + "<td><select data-f=\"season\" aria-label=\"Season\">" + optionList(SEASONS, r.season) + "</select></td>"
+      + "<td><select data-f=\"use_type\" aria-label=\"Use\">" + optionList(USES, r.use_type) + "</select></td>"
+      + "<td class=\"num\"><input value=\"" + ((r.price_cents || 0) / 100) + "\" data-f=\"price\" inputmode=\"decimal\" aria-label=\"Price\"></td>"
+      + "<td class=\"num\"><input value=\"" + r.qty + "\" data-f=\"qty\" inputmode=\"numeric\" aria-label=\"Quantity\" class=\"" + (r.qty <= 5 ? "low" : "") + "\"></td>"
+      + "<td><button class=\"danger\" data-del=\"" + i + "\" type=\"button\">Delete</button></td>"
+      + "</tr>";
   }).join("");
-  emptyEl.hidden = shown > 0;
-  var units = rows.reduce(function(a,r){ return a + (+r.qty||0); }, 0);
-  var value = rows.reduce(function(a,r){ return a + (+r.price||0)*(+r.qty||0); }, 0);
-  summaryEl.innerHTML =
-    '<div><div class="n">'+rows.length+'</div><div class="l">Tyre lines</div></div>'
-    + '<div><div class="n">'+units+'</div><div class="l">Units in stock</div></div>'
-    + '<div><div class="n">'+money(value)+'</div><div class="l">Stock value</div></div>';
+  $("empty").hidden = shown > 0;
+  var units = rows.reduce(function (a, r) { return a + (+r.qty || 0); }, 0);
+  var value = rows.reduce(function (a, r) { return a + (+r.price_cents || 0) * (+r.qty || 0); }, 0);
+  $("summary").innerHTML =
+    "<div><div class=\"n\">" + rows.length + "</div><div class=\"l\">Tyre lines</div></div>"
+    + "<div><div class=\"n\">" + units + "</div><div class=\"l\">Units in stock</div></div>"
+    + "<div><div class=\"n\">" + money(value) + "</div><div class=\"l\">Stock value</div></div>";
+  updateAuthUI();
 }
 
-tbody.addEventListener("input", function(e){
+function updateSummary() {
+  var units = rows.reduce(function (a, r) { return a + (+r.qty || 0); }, 0);
+  var value = rows.reduce(function (a, r) { return a + (+r.price_cents || 0) * (+r.qty || 0); }, 0);
+  var ns = $("summary").querySelectorAll(".n");
+  if (ns[0]) ns[0].textContent = rows.length;
+  if (ns[1]) ns[1].textContent = units;
+  if (ns[2]) ns[2].textContent = money(value);
+}
+
+function scheduleSave(r) {
+  var key = r.row_id || r._tmp;
+  setNote("Saving…");
+  if (saveTimers[key]) clearTimeout(saveTimers[key]);
+  saveTimers[key] = setTimeout(function () { saveRow(r); }, 600);
+}
+function saveRow(r) {
+  var payload = {
+    size: r.size, brand: r.brand, model: r.model,
+    season: r.season, use_type: r.use_type,
+    price_cents: r.price_cents, qty: r.qty
+  };
+  if (r.row_id) payload.row_id = r.row_id;
+  callU("stock.save", withSid({ row: payload })).then(function (j) {
+    if (j && j.ok) {
+      r.row_id = j.row.row_id;
+      if (j.row.size && j.row.size !== r.size) {
+        r.size = j.row.size;
+        var tr = document.querySelector("tr[data-rid=\"" + (r._tmp || "") + "\"]");
+        var inp = tr && tr.querySelector("input[data-f=\"size\"]");
+        if (inp) inp.value = r.size;
+        if (tr) tr.setAttribute("data-rid", r.row_id);
+      }
+      r._tmp = null;
+      setNote("Saved", "ok");
+      updateSummary();
+      updateAuthUI();
+    } else if (j && j.fields) {
+      var first = Object.keys(j.fields)[0];
+      setNote("Not saved — " + first + ": " + j.fields[first], "err");
+    } else {
+      setNote("Not saved — " + ((j && j.error) || "try again"), "err");
+    }
+  }).catch(function () { setNote("Could not reach the shop — check your connection and try again.", "err"); });
+}
+
+function loadStock() {
+  return callU("stock.list", withSid({})).then(function (j) {
+    if (j && j.ok) {
+      rows = (j.rows || []).map(function (r) {
+        return { row_id: r.row_id, size: r.size, brand: r.brand, model: r.model, season: r.season, use_type: r.use_type, price_cents: r.price_cents, qty: r.qty };
+      });
+      render();
+    } else {
+      setNote("Stock did not load — " + ((j && j.error) || "try again"), "err");
+    }
+  }).catch(function () { setNote("Could not reach the shop — check your connection and try again.", "err"); });
+}
+function loadSettings() {
+  return callU("settings.get", withSid({})).then(function (j) {
+    if (j && j.ok && j.settings) {
+      $("greeting").value = j.settings.greeting || "";
+      $("contactText").value = j.settings.contact_text || "";
+      $("maxPicks").value = j.settings.max_picks || 3;
+    }
+  }).catch(function () {});
+}
+function loadUnanswered() {
+  return callU("unanswered.list", withSid({})).then(function (j) {
+    var box = $("unansweredList");
+    if (!j || !j.ok) { box.innerHTML = "<p class=\"sub\">Could not load unanswered questions.</p>"; return; }
+    var list = j.unanswered || [];
+    if (!list.length) { box.innerHTML = "<p class=\"sub\">Nothing unanswered — every customer question got an answer.</p>"; return; }
+    box.innerHTML = list.map(function (e) {
+      var when = "";
+      try { when = new Date(e.ts).toLocaleString(); } catch (err) {}
+      return "<div class=\"qrow\"><div class=\"q\">" + esc(e.question) + "</div>"
+        + "<div class=\"meta\">" + esc(e.reason) + (e.size ? " · " + esc(e.size) : "") + " · " + esc(when) + "</div></div>";
+    }).join("");
+  }).catch(function () { $("unansweredList").innerHTML = "<p class=\"sub\">Could not load unanswered questions.</p>"; });
+}
+
+function showTab(name) {
+  var tabs = { stock: ["tabStock", "panelStock"], settings: ["tabSettings", "panelSettings"], unanswered: ["tabUnanswered", "panelUnanswered"] };
+  Object.keys(tabs).forEach(function (k) {
+    $(tabs[k][0]).classList.toggle("active", k === name);
+    $(tabs[k][1]).classList.toggle("hidden", k !== name);
+  });
+  if (name === "unanswered") loadUnanswered();
+  if (name === "settings") loadSettings();
+}
+
+function doLookup() {
+  var text = $("lookup").value.trim();
+  var out = $("lookupResult");
+  if (!text) { out.innerHTML = "<p class='sub'>Enter a size first.</p>"; return; }
+  out.innerHTML = "<p class='sub'>Looking up…</p>";
+  callU("stock.lookup", withSid({ size_text: text })).then(function (j) {
+    if (!j || !j.ok) { out.innerHTML = "<p>Lookup did not go through — " + esc((j && j.error) || "try again") + ".</p>"; return; }
+    var html = "<p class=\"lookup-msg\">" + esc(j.message || "") + "</p>";
+    if (j.picks && j.picks.length) {
+      html += "<ul>" + j.picks.map(function (p) {
+        return "<li>" + esc(p.brand) + " " + esc(p.model) + " — " + esc(p.season) + ", " + esc(p.use_type) + " — " + money(p.price_cents) + " (" + p.qty + " left) — " + esc(p.why) + "</li>";
+      }).join("") + "</ul>";
+    }
+    if (j.alternatives && j.alternatives.length) {
+      html += "<ul>" + j.alternatives.map(function (a) {
+        return "<li>" + esc(a.size) + " — " + esc(a.brand) + " " + esc(a.model) + " — " + money(a.price_cents) + " (" + a.qty + " left)</li>";
+      }).join("") + "</ul>";
+    }
+    out.innerHTML = html;
+  }).catch(function () { out.innerHTML = "<p>Could not reach the shop — check your connection and try again.</p>"; });
+}
+
+// ---- table events ----
+$("rows").addEventListener("input", function (e) {
   var tr = e.target.closest("tr");
   if (!tr) return;
   var r = rows[+tr.dataset.i];
   var f = e.target.dataset.f;
   var v = e.target.value;
-  if (f === "price" || f === "qty") { v = Math.max(0, Math.round(parseFloat(v) || 0)); }
-  r[f] = v;
-  if (f === "qty") render();
+  if (f === "price") { r.price_cents = Math.max(0, Math.round((parseFloat(v) || 0) * 100)); updateSummary(); }
+  else if (f === "qty") {
+    r.qty = Math.max(0, Math.round(parseFloat(v) || 0));
+    e.target.classList.toggle("low", r.qty <= 5);
+    updateSummary();
+  }
+  else r[f] = v;
+  scheduleSave(r);
 });
-
-tbody.addEventListener("click", function(e){
+$("rows").addEventListener("click", function (e) {
   var btn = e.target.closest("[data-del]");
   if (!btn) return;
-  rows.splice(+btn.dataset.del, 1);
-  render();
+  var i = +btn.dataset.del;
+  var r = rows[i];
+  if (r.row_id) {
+    callU("stock.delete", withSid({ row_id: r.row_id })).then(function (j) {
+      if (j && j.ok) { rows.splice(i, 1); setNote("Row deleted", "ok"); render(); }
+      else setNote("Delete did not go through — " + ((j && j.error) || "try again"), "err");
+    }).catch(function () { setNote("Could not reach the shop — check your connection and try again.", "err"); });
+  } else {
+    rows.splice(i, 1);
+    render();
+  }
 });
-
-document.getElementById("addRow").addEventListener("click", function(){
-  rows.push({ size:"", brand:"", model:"", season:"summer", use:"commuting", price:0, qty:0 });
+$("addRow").addEventListener("click", function () {
+  tmpSeq++;
+  rows.push({ _tmp: "tmp-" + tmpSeq, size: "", brand: "", model: "", season: "summer", use_type: "commuting", price_cents: 0, qty: 0 });
   render();
-  var inputs = tbody.querySelectorAll("tr:last-child input");
+  var inputs = document.querySelectorAll("#rows tr:last-child input");
   if (inputs[0]) inputs[0].focus();
 });
+$("loadDemo").addEventListener("click", function () {
+  var btn = $("loadDemo");
+  btn.disabled = true;
+  setNote("Loading demo stock…");
+  var chain = Promise.resolve();
+  DEMO_ROWS.forEach(function (d) {
+    chain = chain.then(function () {
+      return callU("stock.save", withSid({ row: {
+        size: d.size, brand: d.brand, model: d.model, season: d.season,
+        use_type: d.use_type, price_cents: Math.round(d.price * 100), qty: d.qty } }));
+    });
+  });
+  chain.then(function () {
+    btn.disabled = false;
+    return loadStock();
+  }).then(function () { setNote("Demo stock loaded — edit or delete any row.", "ok"); })
+  .catch(function () { btn.disabled = false; setNote("Demo stock did not load — try again.", "err"); });
+});
+$("q").addEventListener("input", render);
+$("season").addEventListener("change", render);
+$("lookupBtn").addEventListener("click", doLookup);
+$("lookup").addEventListener("keydown", function (e) { if (e.key === "Enter") doLookup(); });
 
-document.getElementById("q").addEventListener("input", render);
-document.getElementById("season").addEventListener("change", render);
+// ---- settings ----
+$("saveSettings").addEventListener("click", function () {
+  setSettingsNote("Saving…");
+  callU("settings.save", withSid({
+    greeting: $("greeting").value,
+    contact_text: $("contactText").value,
+    max_picks: parseInt($("maxPicks").value, 10)
+  })).then(function (j) {
+    if (j && j.ok) setSettingsNote("Settings saved.", "ok");
+    else if (j && j.fields) {
+      var first = Object.keys(j.fields)[0];
+      setSettingsNote("Not saved — " + first + ": " + j.fields[first], "err");
+    } else setSettingsNote("Not saved — " + ((j && j.error) || "try again"), "err");
+  }).catch(function () { setSettingsNote("Could not reach the shop — check your connection and try again.", "err"); });
+});
 
-function doLookup(){
-  var want = normSize(document.getElementById("lookup").value);
-  var out = document.getElementById("lookupResult");
-  if (!want) { out.innerHTML = "<p class='sub'>Enter a size first.</p>"; return; }
-  var hits = rows.filter(function(r){ return normSize(r.size) === want && (+r.qty||0) > 0; })
-    .sort(function(a,b){ return a.price - b.price; });
-  if (!hits.length) {
-    out.innerHTML = "<p>No in-stock tyres in " + esc(document.getElementById("lookup").value) + ". Closest sizes in stock: "
-      + esc(rows.filter(function(r){ return (+r.qty||0) > 0; }).map(function(r){ return r.size; }).filter(function(v,i,a){ return a.indexOf(v)===i; }).join(", ") || "none") + ".</p>";
+// ---- unanswered ----
+$("refreshUnanswered").addEventListener("click", loadUnanswered);
+$("clearUnanswered").addEventListener("click", function () {
+  callU("unanswered.clear", withSid({})).then(function (j) {
+    if (j && j.ok) { loadUnanswered(); }
+    else $("unansweredList").innerHTML = "<p class=\"sub\">Clear did not go through — " + esc((j && j.error) || "try again") + ".</p>";
+  }).catch(function () { $("unansweredList").innerHTML = "<p class=\"sub\">Could not reach the shop — check your connection and try again.</p>"; });
+});
+
+// ---- tabs ----
+$("tabStock").addEventListener("click", function () { showTab("stock"); });
+$("tabSettings").addEventListener("click", function () { showTab("settings"); });
+$("tabUnanswered").addEventListener("click", function () { showTab("unanswered"); });
+
+// ---- sign-in (handoff's own panel, same flow as Zuck) ----
+function hasHandoffAuth() { return typeof window !== "undefined" && !!window.HandoffAuth; }
+function signIn() {
+  if (!hasHandoffAuth()) {
+    $("statusText").textContent = "Sign-in opens handoff's own panel on the live page.";
     return;
   }
-  out.innerHTML = "<p><strong>" + hits.length + " in stock in " + esc(document.getElementById("lookup").value) + ":</strong></p><ul>"
-    + hits.map(function(r){ return "<li>" + esc(r.brand) + " " + esc(r.model) + " — " + esc(r.season) + ", " + esc(r.use) + " — " + money(r.price) + " (" + r.qty + " left)</li>"; }).join("")
-    + "</ul>";
+  try { window.HandoffAuth.openSignIn(); } catch (e) {
+    $("statusText").textContent = "Sign-in did not open — try again.";
+  }
 }
-document.getElementById("lookupBtn").addEventListener("click", doLookup);
-document.getElementById("lookup").addEventListener("keydown", function(e){ if (e.key === "Enter") doLookup(); });
+function signOut() {
+  try { if (hasHandoffAuth() && window.HandoffAuth.signOut) window.HandoffAuth.signOut(); } catch (e) {}
+  if (SID) callU("signout", { sid: SID }).catch(function () {});
+  SID = null; USERNAME = null; SHOP_NAME = null; rows = [];
+  try { history.replaceState(null, "", location.pathname); } catch (e) {}
+  render();
+  updateAuthUI();
+}
+$("signInBtn").addEventListener("click", signIn);
+$("signOutBtn").addEventListener("click", signOut);
+function linkHandoffSession() {
+  if (!hasHandoffAuth() || !window.HandoffAuth.token) return;
+  var tok = "";
+  try { tok = window.HandoffAuth.token() || ""; } catch (e) { tok = ""; }
+  if (!tok) return;
+  callU("session.start", { token: tok }).then(function (d) {
+    if (d && d.ok) {
+      SID = d.sid; USERNAME = d.user || null; SHOP_NAME = d.shop_name || null;
+      try { history.replaceState(null, "", location.pathname + "?sid=" + encodeURIComponent(SID)); } catch (e) {}
+      updateAuthUI();
+      loadStock();
+      loadSettings();
+    }
+  }).catch(function () {});
+}
+function refreshHandoffUser() {
+  if (!hasHandoffAuth() || !window.HandoffAuth.me) { updateAuthUI(); return; }
+  window.HandoffAuth.me().then(function (me) {
+    if (me && me.user && (me.user.handle || me.user.username)) {
+      if (!SID) linkHandoffSession();
+      else { USERNAME = me.user.handle || me.user.username; updateAuthUI(); }
+    } else updateAuthUI();
+  }).catch(function () { updateAuthUI(); });
+}
+if (hasHandoffAuth() && window.HandoffAuth.onChange) {
+  try { window.HandoffAuth.onChange(function () { setTimeout(refreshHandoffUser, 300); }); } catch (e) {}
+}
 
-render();
+// ---- init ----
+(function init() {
+  var q;
+  try { q = new URLSearchParams(location.search); } catch (e) { updateAuthUI(); return; }
+  var sid = q.get("sid");
+  if (sid) {
+    callU("session", { sid: sid }).then(function (s) {
+      if (s && s.ok) {
+        SID = sid; USERNAME = s.user || null; SHOP_NAME = s.shop_name || null;
+        updateAuthUI();
+        loadStock();
+        loadSettings();
+      } else {
+        try { history.replaceState(null, "", location.pathname); } catch (e) {}
+        updateAuthUI();
+      }
+      refreshHandoffUser();
+    }).catch(function () { updateAuthUI(); refreshHandoffUser(); });
+  } else {
+    updateAuthUI();
+    refreshHandoffUser();
+  }
+  render();
+})();
+})();
 </script>
 </body>
 </html>
